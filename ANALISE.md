@@ -108,6 +108,18 @@ A conferência manual no Excel dá lugar à comparação automatizada no script,
 
 Por fim, vale pedir ao tribunal uma documentação atualizada, definindo o formato de valores, datas e o tipo estorno.
 
+## Banco
+
+O SQL completo está em `prevencao.sql`. As mudanças principais:
+
+- `pagamento` ganha `atualizado_em` e `UNIQUE (evento_id)`, a gravação vira upsert que só substitui por uma versão mais recente, então reprocessar não duplica. Antes do `UNIQUE`, os duplicados já existentes precisam ser resolvidos. Linhas novas passam a exigir `atualizado_em`, sem quebrar as antigas (`NOT VALID`).
+- `precatorio` também é gravado por upsert, a partir do `precatorios.json`.
+- O total deixa de ser acumulado e o prazo deixa de ser armazenado, os dois passam a ser calculados por views (`v_total_pago` e `v_prazo_pagamento`). O banco é a fonte da verdade, e os totais e o prazo do `precatorios.json` servem para reconciliação.
+- `arquivo_recebido` registra o hash de cada arquivo. `evento_rejeitado` guarda só os eventos que ficaram de fora, com categoria, motivo e o acompanhamento da resolução. O que entrou com alerta fica no `relatorio.json`, que registra tudo o que aconteceu em cada execução.
+- O processo passa a ter `CHECK` de 20 dígitos. Antes dele, os processos fora do formato precisam ser normalizados.
+
+Limite conhecido: se a mesma versão de um evento chegar com outro valor em arquivos diferentes, o upsert mantém a primeira. Dentro de um arquivo, o `limpeza.py` já marca esse caso como em dúvida.
+
 # Dúvidas
 
 Perguntas para alinhar antes de formalizar uma proposta de limpeza definitiva. A numeração entre parênteses refere o item do diagnóstico.
