@@ -117,7 +117,7 @@ Perguntas para alinhar antes de formalizar uma proposta de limpeza definitiva. A
 
 ## Para a operação
 
-1. O `tribunal.csv` analisado é o arquivo original do tribunal ou o salvo pelo Excel? A documentação indica `UTF-8`, separação por `,` e ponto decimal, mas o arquivo esta em `ISO-8859-1`, com `;` e separador de milhar com vírgula. (13)
+1. O `tribunal.csv` analisado é o arquivo original do tribunal ou o salvo pelo Excel? A documentação indica `UTF-8`, separação por `,` e ponto decimal, mas o arquivo está em `ISO-8859-1`, com `;` e vírgula decimal. (13)
 2. De onde vem o `apresentacoes.json` e qual o papel dele no fluxo? (16)
 3. Quando o script precisa rodar de novo após uma falha, ele reprocessa tudo do zero ou existe algum controle do que já foi importado? (15)
 4. Onde o sistema guarda o total pago e o prazo hoje, já que o `schema.sql` não tem essas colunas, e de onde sai o `hub.csv`? (14)
