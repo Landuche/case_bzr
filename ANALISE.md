@@ -98,6 +98,16 @@ Os itens estão ordenados do maior para o menor impacto operacional e financeiro
 
 ---
 
+# Prevenção
+
+## Processo
+
+O arquivo recebido deve ser armazenado sem ser sobrescrito. Posteriormente é criado um hash em SHA-256 de cada arquivo para ser registrado no relatório, o que permite reprocessamento e auditoria seguros.
+
+A conferência manual no Excel dá lugar à comparação automatizada no script, que normaliza os dados recebidos para apontar apenas divergências reais. Toda execução gera logs e um relatório com o motivo de cada ocorrência, alertando a operação sempre que houver eventos rejeitados, eliminando as perdas silenciosas.
+
+Por fim, vale pedir ao tribunal uma documentação atualizada, definindo o formato de valores, datas e o tipo estorno.
+
 # Dúvidas
 
 Perguntas para alinhar antes de formalizar uma proposta de limpeza definitiva. A numeração entre parênteses refere o item do diagnóstico.
