@@ -39,6 +39,7 @@ CREATE TABLE evento_rejeitado (
 );
 
 -- gravação do precatório a partir do precatorios.json
+PREPARE gravar_precatorio (TEXT, TEXT, NUMERIC, DATE) AS
 INSERT INTO precatorio (numero_processo, ente_devedor, valor_face, apresentado_em)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (numero_processo) DO UPDATE
@@ -48,8 +49,10 @@ ON CONFLICT (numero_processo) DO UPDATE
 
 -- reimportar não duplica, e só uma versão mais recente substitui a atual
 -- linhas antigas, sem atualizado_em, aceitam a primeira versão que chegar
+-- o processo chega com os 20 dígitos e é convertido no id do precatório, gravado antes
+PREPARE gravar_pagamento (TEXT, TEXT, TEXT, NUMERIC, DATE, TIMESTAMPTZ, BIGINT) AS
 INSERT INTO pagamento (precatorio_id, evento_id, tipo, valor, pago_em, atualizado_em, arquivo_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+VALUES ((SELECT id FROM precatorio WHERE numero_processo = $1), $2, $3, $4, $5, $6, $7)
 ON CONFLICT (evento_id) DO UPDATE
     SET precatorio_id = EXCLUDED.precatorio_id,
         tipo          = EXCLUDED.tipo,

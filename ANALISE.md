@@ -110,11 +110,11 @@ Por fim, vale pedir ao tribunal uma documentação atualizada, definindo o forma
 
 ## Banco
 
-O SQL completo está em `prevencao.sql`. As mudanças principais:
+O SQL está em `prevencao.sql` e roda sobre o `schema.sql` atual. As mudanças principais:
 
-- `pagamento` ganha `atualizado_em` e `UNIQUE (evento_id)`, a gravação vira upsert que só substitui por uma versão mais recente, então reprocessar não duplica. Antes do `UNIQUE`, os duplicados já existentes precisam ser resolvidos. Linhas novas passam a exigir `atualizado_em`, sem quebrar as antigas (`NOT VALID`).
-- `precatorio` também é gravado por upsert, a partir do `precatorios.json`.
-- O total deixa de ser acumulado e o prazo deixa de ser armazenado, os dois passam a ser calculados por views (`v_total_pago` e `v_prazo_pagamento`). O banco é a fonte da verdade, e os totais e o prazo do `precatorios.json` servem para reconciliação.
+- `pagamento` ganha `atualizado_em` e `UNIQUE (evento_id)`. A gravação vira upsert que só substitui por uma versão mais recente, então reprocessar não duplica. Antes do `UNIQUE`, os duplicados já existentes precisam ser resolvidos. Linhas novas passam a exigir `atualizado_em`, sem quebrar as antigas (`NOT VALID`).
+- `precatorio` também é gravado por upsert, a partir do `precatorios.json`, antes dos pagamentos. As duas gravações ficam como comandos preparados (`gravar_precatorio` e `gravar_pagamento`), que a ingestão executa com os dados da saída do `limpeza.py`.
+- O total deixa de ser acumulado e o prazo deixa de ser armazenado. Os dois passam a ser calculados por views (`v_total_pago` e `v_prazo_pagamento`). O banco é a fonte da verdade, e os totais e o prazo do `precatorios.json` servem para reconciliação.
 - `arquivo_recebido` registra o hash de cada arquivo. `evento_rejeitado` guarda só os eventos que ficaram de fora, com categoria, motivo e o acompanhamento da resolução. O que entrou com alerta fica no `relatorio.json`, que registra tudo o que aconteceu em cada execução.
 - O processo passa a ter `CHECK` de 20 dígitos. Antes dele, os processos fora do formato precisam ser normalizados.
 
