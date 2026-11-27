@@ -98,6 +98,60 @@ Os itens estão ordenados do maior para o menor impacto operacional e financeiro
 
 ---
 
+# Limpeza
+
+Implementada em `limpeza.py`. Ele funciona como uma camada de validação antes da ingestão, lendo os arquivos como vieram, sem alterá-los, e entrega uma base confiável junto com um relatório do que foi corrigido, descartado ou ficou em duvida, e o por quê. O script de ingestão passa a consumir esse output.
+
+**Categorias do relatório**
+- **corrigido:** o dado estava fora do padrão, mas a correção é segura (formato, versão mais recente, prazo recalculado pela regra).
+- **descartado:** o registro fica fora da base, seja por ser uma duplicata idêntica ou por não ter como entrar sem confirmação (valor nulo ou negativo, processo vazio).
+- **em dúvida:** o registro entra com a melhor informação disponível, mas depende de confirmação (divergência entre fontes, fuso que muda o dia, pagamento antes da apresentação).
+
+1. **Leitura:** os arquivos são lidos sem alteração. Nos CSV, a codificação é detectada (UTF-8, com fallback para ISO-8859-1) e o separador também (`;` ou `,`). O desvio do `tribunal.csv` em relação à documentação é registrado. Se o arquivo estiver vazio, não puder ser lido como CSV ou as colunas esperadas não aparecerem, o processamento para com o motivo, sem gerar saída.
+2. **Processo:** aceito com máscara CNJ ou com os 20 dígitos, e normalizado para 20 dígitos. Qualquer outro formato é descartado.
+3. **Precatórios:**
+   - quando tribunal e hub divergem em valor de face ou ente, é usado o valor do tribunal, e o caso fica em dúvida até a confirmação.
+   - passa por normalização antes de ser comparado, então diferença de grafia não conta como divergência.
+   - quem aparece só de um lado entra na base, mas fica em dúvida.
+   - registro com algum campo ilegível entra com o que estiver válido, e o relatório diz o que faltou.
+   - Valor de face ilegível no tribunal usa o do hub como backup, sem valor válido nos dois, o precatório é descartado.
+   - Processo invalido tambem descarta o precatório.
+4. **Prazo:**
+   - data com horário é convertida para o horário de Brasília antes de pegar o dia, e data sem horário continua só data.
+   - os casos em que o fuso muda o dia ficam em dúvida.
+   - até 02/04, o prazo é 31/12 do ano seguinte, depois, 31/12 do ano subsequente.
+   - o prazo do hub que não bate com o cálculo, ou que está ilegível, é registrado como corrigido.
+   - precatório sem data de apresentação fica em dúvida, sem prazo.
+5. **Pagamentos:**
+   - duplicatas idênticas são descartadas.
+   - valor e data no formato brasileiro e processo sem máscara são normalizados.
+   - valores ambíguos (`2.500`, `R$ 1.000`) são recusados.
+   - são descartados: valor nulo ou não positivo, processo vazio ou desconhecido, tipo inválido, data inválida e `atualizado_em` ausente ou sem fuso.
+   - entre versões do mesmo `evento_id`, fica a de `atualizado_em` mais recente, comparando o instante, versões diferentes com o mesmo `atualizado_em` ficam em dúvida.
+   - pagamento anterior à apresentação fica na base, mas em dúvida.
+   - pagamentos de um precatório que ficou fora da base também são descartados, com o motivo no relatório.
+6. **Totais:** 
+   - pagamentos, estornos, líquido e saldo por precatório, calculados a partir dos eventos.
+   - Líquido negativo ou acima do valor de face fica em dúvida. 
+   - Os totais e o prazo do `precatorios.json` servem para reconciliação, no banco, eles são calculados pelas view.
+7. **Saída:** `precatorios.json`, `pagamentos.json` e `relatorio.json` (resumo, ocorrências e hash de cada arquivo de entrada), em uma pasta separada. O script não grava na mesma pasta dos originais.
+
+**Decisões**
+
+O princípio é aceitar o que temos documentado, recusar o resto com o motivo e não dar palpites sem fundamento, ja que eles podem gerar problemas graves e dificeis de serem rastreados.
+
+- **Formato de arquivo desconhecido para o processamento em vez de ser convertido.** Codificação sem BOM não tem como ser detectada com certeza. Como o cabeçalho é todo em ASCII, um arquivo lido na codificação errada passa na validação e só os acentos do ente saem trocados. Formato novo entra no código depois de conferido.
+- **Sem detecção automática de data.** `03/04/2025` pode ser 3 de abril ou 4 de março, e o corte do prazo é justamente 02/04. Só são aceitos `AAAA-MM-DD` e `DD/MM/AAAA`, que não se confundem. O resto é recusado.
+- **Valores ambíguos recusados.** `1.000` pode ser mil ou um. Pela mesma razão do item anterior, o código recusa em vez de adivinhar.
+- **Campo essencial descarta, campo complementar é registrado com log.** Pagamento sem valor ou sem data não entram, porque distorce o total e viola o schema. Prazo ou valor de face ilegível no hub é coberto por outra fonte, então o registro entra e o relatório diz o que faltou.
+- **Versões empatadas ficam em dúvida.** Com o mesmo `atualizado_em` e conteúdo diferente, não há como saber qual vale, e escolher uma seria palpite.
+- **`atualizado_em` ausente ou sem fuso não é preenchido.** Usar a hora do processamento faria uma versão sem data vencer as outras.
+- **Data sem horário continua sendo só data.** Se ganhasse 00:00 UTC, na conversão para Brasília cairia no dia anterior e poderia mudar o prazo.
+- **O tribunal é usado em caso de divergência, mas não é tratado como certo.** Ele é a origem do precatório e o hub é uma cópia operacional, então o valor dele é o mais provável. Como não há confirmação, a divergência fica em dúvida, e não como correção.
+- **O hash dos arquivos serve para rastreio.** Ele registra qual versão exata de cada arquivo foi processada. O que garante que reprocessar não muda o resultado é a deduplicação por `evento_id`, aqui e na gravação do banco.
+
+---
+
 # Prevenção
 
 ## Processo
@@ -107,6 +161,17 @@ O arquivo recebido deve ser armazenado sem ser sobrescrito. Posteriormente é cr
 A conferência manual no Excel dá lugar à comparação automatizada no script, que normaliza os dados recebidos para apontar apenas divergências reais. Toda execução gera logs e um relatório com o motivo de cada ocorrência, alertando a operação sempre que houver eventos rejeitados, eliminando as perdas silenciosas.
 
 Por fim, vale pedir ao tribunal uma documentação atualizada, definindo o formato de valores, datas e o tipo estorno.
+
+## Script
+
+O script de importação passa a processar o output do `limpeza.py`, e não mais os arquivos do tribunal diretamente. A validação, a normalização e a deduplicação ficam no `limpeza.py`, e a importação só grava.
+
+O que muda na gravação:
+- **Não soma mais.** Hoje cada valor é somado ao total do processo, então qualquer repetição infla o resultado. Agora cada evento é gravado pelo `evento_id` via upsert, e só uma versão com `atualizado_em` mais recente substitui a atual. Como o tribunal reenvia os últimos 7 dias, o mesmo evento pode chegar limpo em dias diferentes, e o upsert garante que ele vai ser inserido uma só vez.
+- **Respeita o tipo.** O estorno é gravado como estorno, e a view do total subtrai.
+- **Precatórios antes dos pagamentos.** O `precatorios.json` é gravado primeiro, também por upsert, para que todo pagamento encontre o seu precatório.
+- **Nada some.** O que ficou de fora e precisa de análise vai para `evento_rejeitado`. Duplicatas idênticas e o que entrou com alerta ficam só no relatório.
+- **Reprocessar é seguro.** Rodar de novo depois de uma falha, com o mesmo arquivo, não muda o resultado: os eventos já gravados são reconhecidos pelo `evento_id`.
 
 ## Banco
 
@@ -119,6 +184,8 @@ O SQL está em `prevencao.sql` e roda sobre o `schema.sql` atual. As mudanças p
 - O processo passa a ter `CHECK` de 20 dígitos. Antes dele, os processos fora do formato precisam ser normalizados.
 
 Limite conhecido: se a mesma versão de um evento chegar com outro valor em arquivos diferentes, o upsert mantém a primeira. Dentro de um arquivo, o `limpeza.py` já marca esse caso como em dúvida.
+
+---
 
 # Dúvidas
 
